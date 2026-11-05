@@ -1,8 +1,6 @@
-# Canon LBP2900 — Docker CUPS print server for Synology DSM
+# Canon LBP2900 — сервер печати Docker CUPS для Synology DSM
 
-USB Canon LBP2900 (Canon L11121E) shared over LAN with CUPS and the open-source
-CAPT filter. **Ubuntu uses IPP**, **Windows 10 uses LPR**, and **Android uses
-DNS-SD/IPP** advertised by the NAS's Avahi daemon.
+USB-принтер Canon LBP2900 (Canon L11121E) доступен по локальной сети благодаря CUPS и открытому фильтру CAPT. **Ubuntu печатает по IPP**, **Windows 10 — по LPR**, а **Android — по IPP с обнаружением через DNS-SD**, которое обеспечивает демон Avahi на NAS.
 
 ```text
 Ubuntu  -- IPP TCP 8631 -----------+
@@ -10,36 +8,25 @@ Android -- mDNS + IPP TCP 8631 ----+--> Synology NAS --> Docker CUPS --> CAPT --
 Windows -- LPR TCP 1515 ----------+
 ```
 
-## Verified on the original NAS
+## Проверенная конфигурация исходного NAS
 
-- DSM/Xpenology 7.3.2, x86_64, LAN IP `192.168.23.10`.
-- Printer CUPS queue `Canon_LBP2900`; USB URI from the original device:
+- DSM/Xpenology 7.3.2, x86_64, IP-адрес в локальной сети: `192.168.23.10`.
+- Очередь печати CUPS: `Canon_LBP2900`; USB URI исходного принтера:
   `usb://Canon/LBP2900?serial=0000A386UFWf`.
-- Ubuntu IPP printing; Windows 10 via `Microsoft PS Class Driver` and LPR;
-  Android built-in printing after Avahi announcement.
-- After NAS reboot the CUPS queue was reachable, but mDNS DNS-SD resolution
-  timed out until `touch` was run on the Avahi service file. The provided
-  boot script refreshes it; **fully automatic reboot recovery remains to be
-  confirmed**. Mopria was not working reliably; Android's built-in service was.
+- Проверена печать из Ubuntu по IPP, из Windows 10 по LPR с драйвером `Microsoft PS Class Driver`, а также из Android через встроенную службу печати после публикации объявления Avahi.
+- После перезагрузки NAS очередь CUPS оставалась доступной, однако разрешение службы через mDNS/DNS-SD завершалось по тайм-ауту, пока не был выполнен `touch` для файла службы Avahi. Прилагаемый скрипт запуска при загрузке обновляет этот файл; **полностью автоматическое восстановление после перезагрузки ещё требуется подтвердить**. Mopria работала нестабильно, в отличие от встроенной службы печати Android.
 
-## Quick start
+## Быстрый запуск
 
-1. Clone the repository into a **new directory** (do not overwrite the working
-   installation). `cp .env.example .env`, then set NAS IP, ports, timezone.
-2. Confirm printer device `/dev/usb/lp0` and Docker Compose availability.
-3. `docker compose build && docker compose up -d`.
-4. Create the queue once using `lpadmin` (see [INSTALL.md](INSTALL.md)).
-5. On the NAS as root run `./restore-avahi.sh` and add it as a DSM boot task.
-6. Windows: run `install-canon-lbp2900.ps1` in elevated Windows PowerShell.
+1. Клонируйте репозиторий в **новый каталог** (не перезаписывайте действующую установку). Выполните `cp .env.example .env` и настройте IP-адрес NAS, порты и часовой пояс.
+2. Убедитесь, что существует устройство принтера `/dev/usb/lp0` и доступен Docker Compose.
+3. Выполните `docker compose build && docker compose up -d`.
+4. Один раз создайте очередь с помощью `lpadmin` (см. [INSTALL.md](INSTALL.md)).
+5. На NAS от имени root выполните `./restore-avahi.sh` и добавьте этот скрипт в задачу DSM, запускаемую при загрузке.
+6. В Windows запустите `install-canon-lbp2900.ps1` в Windows PowerShell с правами администратора.
 
-The driver snapshot is vendored in `vendor/captdriver-master.zip` and built
-in a separate Docker build stage. The archive has a fixed SHA-256; its precise
-upstream commit is unknown (see [license notes](LICENSE-THIRD-PARTY.md)).
+Копия исходников драйвера находится в `vendor/captdriver-master.zip` и собирается на отдельном этапе Docker. Контрольная сумма SHA-256 архива зафиксирована; точный коммит исходного репозитория неизвестен (см. [примечания о лицензиях](LICENSE-THIRD-PARTY.md)).
 
-**Security:** CUPS exposes printing on the local network without authentication
-at `/printers/...`; do not forward ports 8631 or 1515 to the Internet. The
-working CUPS configuration, private TLS keys and print jobs must not be
-committed to Git.
+**Безопасность:** CUPS предоставляет доступ к печати в локальной сети без аутентификации по пути `/printers/...`; не перенаправляйте порты 8631 и 1515 в интернет. Рабочую конфигурацию CUPS, закрытые TLS-ключи и задания печати нельзя добавлять в Git.
 
-See **[INSTALL.md](INSTALL.md)** for migration, troubleshooting, backups and
-client instructions.
+Подробные инструкции по переносу, диагностике, резервному копированию и настройке клиентских устройств приведены в **[INSTALL.md](INSTALL.md)**.
