@@ -1,37 +1,30 @@
-# Installation, migration and recovery
+# Установка, перенос и восстановление
 
-This repository is derived from a **working** Canon LBP2900 setup on Synology
-DSM/Xpenology 7.3.2. The refactored multi-stage build and Supervisor-based
-startup have **not yet been tested on the actual NAS**. Test in a separate
-project directory first; do not replace the production container blindly.
+Этот репозиторий основан на **работающей** конфигурации Canon LBP2900 на Synology DSM/Xpenology 7.3.2. Переработанная многоэтапная Docker-сборка и запуск через Supervisor **ещё не проверены на реальном NAS**. Сначала протестируйте проект в отдельном каталоге; не заменяйте действующий контейнер без проверки.
 
-## 1. Files and safety
+## 1. Файлы и безопасность
 
-Tracked: `Dockerfile`, `compose.yaml`, `start.sh`, `supervisor.conf`,
-`cups-config/cupsd.conf`, `avahi/*.in`, `restore-avahi.sh`, Windows script,
-docs, `.env.example`, and a pinned vendor driver ZIP. Not tracked:
-`cups-persistent/` (includes private CUPS TLS keys), `data/` (print jobs),
-`.env`, diagnostic logs and legacy `cups/`.
+В Git хранятся: `Dockerfile`, `compose.yaml`, `start.sh`, `supervisor.conf`, `cups-config/cupsd.conf`, шаблоны `avahi/*.in`, `restore-avahi.sh`, скрипт для Windows, документация, `.env.example` и ZIP-архив стороннего драйвера с зафиксированной контрольной суммой.
 
-The repository is **not a backup** of live CUPS queues. Back up
-`cups-persistent/` separately and protect its contents.
+Не хранятся в Git: `cups-persistent/` (в том числе закрытые TLS-ключи CUPS), `data/` (задания печати), `.env`, диагностические журналы и устаревший каталог `cups/`.
 
-## 2. Configure
+Репозиторий **не заменяет резервную копию** действующих очередей CUPS. Сохраняйте `cups-persistent/` отдельно и защищайте его содержимое.
+
+## 2. Настройка
 
 ```sh
 cp .env.example .env
-# Edit NAS_IP, IPP_PORT, LPR_PORT, TZ, USB_LP_DEVICE
+# Отредактируйте NAS_IP, IPP_PORT, LPR_PORT, TZ, USB_LP_DEVICE
 ls -l /dev/usb/lp0
 ls -l /dev/bus/usb/
 docker compose config
 ```
 
-The example assumes `NAS_IP=192.168.23.10`, `IPP_PORT=8631`,
-`LPR_PORT=1515`, `USB_LP_DEVICE=/dev/usb/lp0`. Keep this IP static on the LAN.
-The container maps the entire USB bus and permits major 189 devices; this is
-broader access than ideal. Restrict network access to trusted LAN clients.
+В примере используются `NAS_IP=192.168.23.10`, `IPP_PORT=8631`, `LPR_PORT=1515`, `USB_LP_DEVICE=/dev/usb/lp0`. IP-адрес NAS в локальной сети должен оставаться постоянным.
 
-## 3. Build and start (new installation)
+В контейнер пробрасывается вся USB-шина и разрешается доступ к устройствам с major-номером 189 — это более широкие права, чем желательно. Ограничьте сетевой доступ доверенными устройствами локальной сети.
+
+## 3. Сборка и запуск (новая установка)
 
 ```sh
 docker compose build
@@ -40,22 +33,18 @@ docker compose ps
 docker compose logs --tail=100
 ```
 
-The Docker build verifies SHA-256 of the bundled `vendor/captdriver-master.zip`,
-then builds `rastertocapt` and the Canon PPD in Debian Bookworm. A new empty
-`cups-persistent/` is initialized from the Debian CUPS defaults and
-`cups-config/cupsd.conf`. Existing `/etc/cups/cupsd.conf` is not overwritten.
+При сборке Docker проверяется SHA-256 прилагаемого архива `vendor/captdriver-master.zip`, после чего в Debian Bookworm компилируются `rastertocapt` и PPD для Canon. Если каталог `cups-persistent/` новый и пустой, он инициализируется стандартными файлами CUPS из Debian и конфигурацией `cups-config/cupsd.conf`. Существующий файл `/etc/cups/cupsd.conf` не перезаписывается.
 
-Verify the USB backend inside the container:
+Проверьте USB-бэкенд внутри контейнера:
 
 ```sh
 docker exec canon-lbp2900 /usr/lib/cups/backend/usb
 ```
 
-For the original printer, the USB URI was:
-`usb://Canon/LBP2900?serial=0000A386UFWf`. Use the URI actually returned
-by your USB backend, not necessarily this serial.
+Для исходного принтера USB URI имел вид:
+`usb://Canon/LBP2900?serial=0000A386UFWf`. Используйте URI, который возвращает USB-бэкенд для вашего устройства: серийный номер может отличаться.
 
-Create the queue **once**:
+Создайте очередь **один раз**:
 
 ```sh
 docker exec canon-lbp2900 lpadmin \
@@ -67,98 +56,80 @@ docker exec canon-lbp2900 lpadmin -d Canon_LBP2900
 docker exec canon-lbp2900 lpstat -t
 ```
 
-A CUPS 2.4 warning about deprecated PPD drivers is expected.
-Do not create the queue again when restoring a saved `cups-persistent/`.
+Предупреждение CUPS 2.4 об устаревших PPD-драйверах ожидаемо. При восстановлении сохранённого каталога `cups-persistent/` создавать очередь повторно не нужно.
 
-Test physical printing (job acceptance alone is insufficient):
+Проверьте **фактическую печать**: одного принятия задания сервером недостаточно.
 
 ```sh
 docker exec canon-lbp2900 sh -c \
   'printf "Canon LBP2900 test\n" | lp -d Canon_LBP2900'
 ```
 
-## 4. Avahi / Android discovery
+## 4. Avahi и обнаружение принтера на Android
 
-The NAS (not the container) runs Avahi and advertises
-`Canon LBP2900 (Docker CUPS)` via `_ipp._tcp`. The generated XML contains the
-IPP port, queue path and NAS IP. The duplicate DSM advertisement
-`usbprinter1 @ microwave` is disabled by renaming its service file; this does
-**not** delete the physical printer or DSM queue.
+На NAS (а не внутри контейнера) работает Avahi, публикующий `Canon LBP2900 (Docker CUPS)` через `_ipp._tcp`. Сформированный XML-файл содержит порт IPP, путь очереди и IP-адрес NAS. Дублирующее объявление DSM `usbprinter1 @ microwave` отключается переименованием файла службы; это **не удаляет** физический принтер или очередь DSM.
 
-As root on the NAS:
+На NAS от имени root:
 
 ```sh
 ./restore-avahi.sh
 avahi-browse -rt _ipp._tcp
 ```
 
-The script reads `.env` and writes `/etc/avahi/services/canon-lbp2900.service`,
-disables `/etc/avahi/services/bonjour-usbprinter1.service` if present, then
-`touch`es the Canon XML. Run it from DSM Task Scheduler at system boot as
-**root**, using an absolute project path, for example:
+Скрипт читает `.env` и записывает `/etc/avahi/services/canon-lbp2900.service`, при наличии отключает `/etc/avahi/services/bonjour-usbprinter1.service`, затем обновляет время изменения XML-файла Canon с помощью `touch`.
+
+Создайте в планировщике задач DSM задачу, выполняемую **при загрузке системы от имени root**. Укажите абсолютный путь к проекту, например:
 
 ```sh
 sleep 60
 /volume1/docker/canon-lbp2900/restore-avahi.sh
 ```
 
-If the repository lives elsewhere, change the absolute path. DSM may
-regenerate the duplicate advertisement after the boot task; check after a
-reboot. A successful boot-task recovery has not yet been confirmed.
+Если репозиторий находится в другом каталоге, измените путь. DSM может повторно создать дублирующее объявление после выполнения задачи — проверяйте это после перезагрузки. Успешное автоматическое восстановление через задачу загрузки ещё не подтверждено.
 
-On Ubuntu:
+На Ubuntu:
 
 ```sh
 avahi-browse -rt _ipp._tcp
 avahi-resolve-host-name microwave.local
 ```
 
-Expect host `microwave.local`, IP `192.168.23.10`, port `8631`, and
-`rp=printers/Canon_LBP2900`. On the original NAS, Avahi announced on both
-`eth0` (`192.168.23.10`) and `eth1` (`169.254.169.182`); the LAN address
-was correct. Avoid altering NAS network interfaces without investigation.
+Ожидаемые значения: узел `microwave.local`, адрес `192.168.23.10`, порт `8631`, `rp=printers/Canon_LBP2900`. На исходном NAS Avahi публиковал объявление через `eth0` (`192.168.23.10`) и `eth1` (`169.254.169.182`); адрес локальной сети определялся правильно. Не меняйте сетевые интерфейсы NAS без дополнительной диагностики.
 
-Android: enable the built-in print service and select
-`Canon LBP2900 (Docker CUPS)`. Mopria Print Service previously reported
-"printer not ready"; the built-in service printed successfully.
+На Android включите встроенную службу печати и выберите `Canon LBP2900 (Docker CUPS)`. Ранее Mopria Print Service сообщала «принтер не готов»; встроенная служба печатала успешно.
 
-## 5. Ubuntu IPP
+## 5. Печать из Ubuntu по IPP
 
-Use `ipp://192.168.23.10:8631/printers/Canon_LBP2900` (replace IP/port).
-CLI test:
+Используйте `ipp://192.168.23.10:8631/printers/Canon_LBP2900` (замените IP-адрес и порт при необходимости).
+
+Проверка из командной строки:
 
 ```sh
 lpstat -h 192.168.23.10:8631 -e
 printf 'Ubuntu print test\n' | lp -h 192.168.23.10:8631 -d Canon_LBP2900
 ```
 
-## 6. Windows 10 LPR
+## 6. Печать из Windows 10 по LPR
 
-Run `install-canon-lbp2900.ps1` from **elevated Windows PowerShell**.
-The script enables the LPR port monitor, uses `Microsoft PS Class Driver`,
-creates LPR queue `Canon_LBP2900`, and sets the port to NAS TCP `1515`
-(the Windows port monitor defaults to 515). It may require rebooting Windows.
+Запустите `install-canon-lbp2900.ps1` в **Windows PowerShell от имени администратора**.
 
-Edit `$serverIP` and `$serverPort` in the script if different from the example.
-Do not substitute the original Canon CAPT Windows driver for the PostScript
-class driver in this server-side rendering architecture.
+Скрипт включает монитор LPR-портов, использует драйвер `Microsoft PS Class Driver`, создаёт LPR-очередь `Canon_LBP2900` и настраивает подключение к TCP-порту NAS `1515` (по умолчанию монитор портов Windows использует 515). Может потребоваться перезагрузка Windows.
 
-## 7. Migration from an existing working NAS
+Если значения отличаются от примера, измените `$serverIP` и `$serverPort` в скрипте.
 
-**Do not run two containers with the same name and host ports.** The working
-instance should remain untouched while validating the new image build in an
-isolated project. Build without starting the new service:
+Не заменяйте класс-драйвер PostScript оригинальным Windows-драйвером Canon CAPT: в этой архитектуре обработка CAPT выполняется на стороне сервера.
+
+## 7. Перенос с уже работающего NAS
+
+**Не запускайте одновременно два контейнера с одинаковым именем и одинаковыми портами на хосте.** Пока проверяете сборку нового образа в отдельном каталоге, оставьте работающий экземпляр нетронутым. Сначала соберите образ без запуска нового сервиса:
 
 ```sh
 docker compose build
 ```
 
-To migrate, stop the old service in a maintenance window, back up
-`cups-persistent/` and `data/`, copy them into the new project, check owner
-and permissions, then start the new container. Keep the old project intact
-for rollback. The new `start.sh` does not overwrite existing CUPS settings.
+Для переноса остановите старый сервис в согласованное время обслуживания, сделайте резервные копии `cups-persistent/` и `data/`, скопируйте их в новый каталог проекта, проверьте владельцев и права доступа, затем запустите новый контейнер. Сохраните старый проект для отката. Новый `start.sh` не перезаписывает существующие настройки CUPS.
 
-When testing with existing queue data, verify:
+При проверке восстановленной очереди выполните:
 
 ```sh
 docker exec canon-lbp2900 lpstat -t
@@ -166,24 +137,22 @@ docker exec canon-lbp2900 /usr/lib/cups/backend/usb
 docker compose ps
 ```
 
-A saved `printers.conf` must be mounted as part of the whole `/etc/cups`
-directory. Binding only `printers.conf` causes CUPS atomic-write errors
-(`Device or resource busy`).
+Сохранённый `printers.conf` необходимо монтировать **в составе всего каталога** `/etc/cups`. Отдельное монтирование `printers.conf` вызывает ошибку атомарной записи CUPS (`Device or resource busy`).
 
-## 8. Troubleshooting
+## 8. Диагностика
 
-| Symptom | Check |
+| Симптом | Что проверить |
 |---|---|
-| IPP page unavailable | `curl -I http://NAS_IP:IPP_PORT/printers/Canon_LBP2900` and `docker compose ps` |
-| Queue disabled | `docker exec canon-lbp2900 lpstat -t` |
-| USB backend missing | `/dev/usb/lp0`, `/dev/bus/usb`, Docker cgroup rule |
-| CUPS says `Failed to open PPD` | PPD existence and mode `644` in `cups-persistent/ppd/` |
-| Job completed, no paper | `/var/log/cups/error_log` and physical printer |
-| Avahi browse `+` but resolve times out | `touch /etc/avahi/services/canon-lbp2900.service` |
-| Duplicate `usbprinter1` returns | Check DSM regenerated `bonjour-usbprinter1.service` |
-| Windows can't connect | Check TCP 1515, LPR queue name, PS class driver, port monitor |
+| Веб-страница IPP недоступна | `curl -I http://NAS_IP:IPP_PORT/printers/Canon_LBP2900` и `docker compose ps` |
+| Очередь отключена | `docker exec canon-lbp2900 lpstat -t` |
+| USB-бэкенд не видит принтер | `/dev/usb/lp0`, `/dev/bus/usb`, правило Docker cgroup |
+| CUPS сообщает `Failed to open PPD` | Наличие PPD и права `644` для файла в `cups-persistent/ppd/` |
+| Задание завершено, но бумага не вышла | `/var/log/cups/error_log` и состояние физического принтера |
+| `avahi-browse` показывает `+`, но разрешение службы завершается по тайм-ауту | `touch /etc/avahi/services/canon-lbp2900.service` |
+| Снова появляется `usbprinter1` | Проверьте, не пересоздала ли DSM файл `bonjour-usbprinter1.service` |
+| Windows не подключается | TCP-порт 1515, имя LPR-очереди, PS class driver и монитор портов |
 
-Useful commands:
+Полезные команды:
 
 ```sh
 docker compose logs --tail=100
@@ -192,9 +161,9 @@ docker exec canon-lbp2900 tail -100 /var/log/cups/error_log
 avahi-browse -rt _ipp._tcp
 ```
 
-## 9. GitHub publication
+## 9. Публикация на GitHub
 
-Only commit files included by `.gitignore`. Verify with:
+Добавляйте в Git только файлы, не исключённые правилами `.gitignore`. Проверьте список:
 
 ```sh
 git init
@@ -203,6 +172,4 @@ git status --short
 git ls-files
 ```
 
-Never commit `cups-persistent/ssl/*.key`, `data/`, raw print jobs or a ZIP of
-the entire working NAS directory. The bundled driver archive includes GPLv3
-source and license; read `LICENSE-THIRD-PARTY.md` before redistribution.
+Никогда не добавляйте в Git `cups-persistent/ssl/*.key`, `data/`, исходные задания печати или ZIP-архив всей рабочей папки NAS. Прилагаемый архив драйвера содержит исходный код под лицензией GPLv3 и текст лицензии; перед распространением ознакомьтесь с `LICENSE-THIRD-PARTY.md`.
