@@ -1,0 +1,14 @@
+.git
+cups-persistent
+data
+cups
+captdriver-master
+captdriver.zip
+avahi
+*.log
+windows-install.txt
+.env
+.env.*
+README.md
+INSTALL.md
+*.ps1

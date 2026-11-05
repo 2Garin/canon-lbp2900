@@ -1,0 +1,24 @@
+services:
+  canon-lbp2900:
+    build: .
+    container_name: canon-lbp2900
+    restart: unless-stopped
+    ports:
+      - "${NAS_IP:-192.168.23.10}:${IPP_PORT:-8631}:631"
+      - "${NAS_IP:-192.168.23.10}:${LPR_PORT:-1515}:515"
+    devices:
+      - "${USB_LP_DEVICE:-/dev/usb/lp0}:/dev/usb/lp0"
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+      - ./cups-persistent:/etc/cups
+      - ./data:/var/spool/cups
+    device_cgroup_rules:
+      - 'c 189:* rwm'
+    environment:
+      TZ: ${TZ:-Europe/Moscow}
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/supervisord.conf status cups | grep -q RUNNING && supervisorctl -c /etc/supervisor/supervisord.conf status lpr | grep -q RUNNING && curl -fsS http://127.0.0.1:631/ >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
