@@ -1,6 +1,8 @@
-# CUPS runtime (may contain print jobs and TLS private keys)
-/cups-persistent/
-/data/
+# CUPS runtime: track only directory placeholders (never jobs or TLS keys)
+/cups-persistent/*
+!/cups-persistent/.gitkeep
+/data/*
+!/data/.gitkeep
 /cups/
 /captdriver-master/
 /captdriver.zip
